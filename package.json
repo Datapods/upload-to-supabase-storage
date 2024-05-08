@@ -25,7 +25,6 @@
   ],
   "author": "JEndler",
   "license": "MIT",
-  "type": "module",
   "dependencies": {
     "@actions/core": "^1.10.0",
     "@supabase/supabase-js": "^2.43.0",
