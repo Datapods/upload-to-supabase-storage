@@ -1,22 +1,22 @@
 name: 'Upload file to Supabase Storage'
 description: 'Upload file to Supabase Storage with GitHub Actions'
-author: 'StatusBase by Zernonia'
+author: 'Datapods by JEndler'
 branding:
-  icon: 'image'
-  color: 'blue'
+  icon: 'server'
+  color: 'purple'
 
 inputs:
-  file_path:
+  path:
     required: true
-    description: 'Path name of the file to be uploaded (eg: /screenshots.png)'
+    description: 'Path name of the file or folder to be uploaded (eg: /screenshots.png, /assets)'
   bucket:
     required: true
     description: 'Name of the bucket to upload to'
     default: ''
-  content_type:
-    required: true
-    description: 'Content-Type header value'
-    default: 'image/jpeg'
+  subfolder:
+    required: false
+    description: 'Subfolder in the Supabase Bucket to upload into'
+    default: 'static'
   cache_control:
     required: true
     description: 'Cache-control: max-age=<seconds>'
@@ -27,9 +27,9 @@ inputs:
     default: 'false'
 
 outputs:
-  result:
-    description: 'Media Key for the image'
+  url:
+    description: 'URL of the uploaded file, if bucket is public'
 
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'dist/index.js'

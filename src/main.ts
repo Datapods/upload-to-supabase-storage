@@ -1,15 +1,24 @@
 import * as core from '@actions/core'
-import {basename, isAbsolute} from 'path'
+import {basename} from 'path'
 import {createClient} from '@supabase/supabase-js'
-import {promises as fs} from 'fs'
+import {existsSync, lstatSync, readFileSync, readdir, Dirent} from 'node:fs'
+import mime from 'mime'
 
-async function run(): Promise<void> {
+export async function run(): Promise<void> {
   try {
     const bucket = core.getInput('bucket')
-    const contentType = core.getInput('content_type')
+    const subfolder = core.getInput('subfolder')
     const cacheControl = core.getInput('cache_control')
     const upsert = core.getInput('upsert') === 'true'
-    const filePath = core.getInput('file_path')
+    const path = core.getInput('path')
+
+    // Determine if the filepath is a file or directory
+    const isDirectory = existsSync(path) && lstatSync(path).isDirectory()
+
+    // Initialize an array to store the uploaded files, to return url
+    const uploadedFiles = []
+
+    core.debug(`File path is a directory: ${isDirectory}`)
 
     const supabaseUrl = process.env.SUPABASE_URL
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY
@@ -20,28 +29,59 @@ async function run(): Promise<void> {
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-    const filePathDir = isAbsolute(filePath)
-      ? filePath
-      : `${process.env.GITHUB_WORKSPACE}/${filePath}`
-    core.debug(`Reading file: ${filePath}`)
-    core.debug(`Reading file dir: ${filePathDir}`)
+    if (isDirectory) {
+      readdir(
+        path,
+        {withFileTypes: true, encoding: 'utf8'},
+        async (err, files: Dirent[]) => {
+          for (const file of files) {
+            if (file.isFile()) {
+              const fileData = readFileSync(file.name)
+              const filepath =
+                subfolder === ''
+                  ? basename(file.name)
+                  : `${subfolder}/${basename(file.name)}`
+              const {error} = await supabase.storage
+                .from(bucket)
+                .upload(filepath, fileData, {
+                  contentType:
+                    mime.getType(basename(file.name)) ||
+                    'application/octet-stream',
+                  cacheControl,
+                  upsert
+                })
+              if (error) throw new Error(error.message)
 
-    const buffer = await fs.readFile(filePathDir)
+              uploadedFiles.push(filepath)
+            }
+          }
+        }
+      )
+    } else {
+      const fileData = readFileSync(path)
+      const filepath =
+        subfolder === '' ? basename(path) : `${subfolder}/${basename(path)}`
+      const {error} = await supabase.storage
+        .from(bucket)
+        .upload(filepath, fileData, {
+          contentType:
+            mime.getType(basename(path)) || 'application/octet-stream',
+          cacheControl,
+          upsert
+        })
+      if (error) throw new Error(error.message)
 
-    const {data, error} = await supabase.storage
-      .from(bucket)
-      .upload(basename(filePath), buffer, {
-        contentType,
-        cacheControl,
-        upsert
-      })
+      uploadedFiles.push(filepath)
+    }
 
-    if (error) throw new Error(error.message)
-    core.debug(`Media Key: ${data?.Key}`)
-    core.setOutput('result', data?.Key)
+    // https://cwdxvalbnrttrnaqmozc.supabase.co/storage/v1/object/public/email-templates/data_broker_answer_receipt.html
+    // Map over uploaded files to return a list of urls
+    const data = uploadedFiles.map(
+      file => `${supabaseUrl}/storage/v1/object/public/${bucket}/${file}`
+    )
+
+    core.setOutput('result', data)
   } catch (error) {
     if (error instanceof Error) core.setFailed(error.message)
   }
 }
-
-run()
